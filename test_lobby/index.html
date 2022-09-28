@@ -1,0 +1,202 @@
+<!-- 
+This is a quick-and-dirty client implementation for the trivia game.
+It will be replaced with an Angular client soon. 
+-->
+
+<!doctype html>
+<html lang="en">
+
+<head>
+    <title>Basic Trivia Client</title>
+    <!-- Required meta tags -->
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+
+    <!-- Bootstrap CSS -->
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css"
+        integrity="sha384-ggOyR0iXCbMQv3Xipma34MD+dH/1fQ784/j6cY/iJTQUOhcWr7x9JvoRxT2MZw1T" crossorigin="anonymous">
+
+    <style>
+        ul {
+            list-style-type: none;
+            padding-left: 0;
+        }
+
+        body {
+            background-color: rgb(240, 240, 240);
+        }
+
+        .container {
+            background-color: white;
+            min-height: 100vh;
+        }
+
+        .list {
+            max-height: 200px;
+            overflow-y: auto;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <h5 id="question" class="text-center">In the lobby</h5>
+        <h5 id="secondsTimer" class="text-center"></h5>
+        <div id="answers" class="text-center mb-3 mt-3"></div>
+
+        <div class="row">
+            <div class="col-md-4 text-center">
+                <h5>Room List</h5>
+                <hr>
+                <div class="list">
+                    <ul id="roomList"></ul>
+                </div>
+            </div>
+
+            <div class="col-md-4 text-center">
+                <h5>User List</h5>
+                <hr>
+                <div class="list">
+                    <ul id="userList"></ul>
+                </div>
+            </div>
+
+            <div class="col-md-4 text-center">
+                <h5>Log</h5>
+                <hr>
+                <div class="list">
+                    <ul id="log"></ul>
+                </div>
+            </div>
+        </div>
+
+        <div class="text-center">
+            <button id="newRoomButton" class="btn btn-success">New Room</button>
+            <button id="leaveRoomButton" class="btn btn-danger">Leave Room</button>
+        </div>
+    </div>
+
+    <!-- Optional JavaScript -->
+    <!-- jQuery first, then Popper.js, then Bootstrap JS -->
+    <script src="https://code.jquery.com/jquery-3.3.1.slim.min.js"
+        integrity="sha384-q8i/X+965DzO0rT7abK41JStQIAqVgRVzpbzo5smXKp4YfRvH+8abtTE1Pi6jizo" crossorigin="anonymous">
+    </script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.14.7/umd/popper.min.js"
+        integrity="sha384-UO2eT0CpHqdSJQ6hJty5KVphtPhzWj9WO1clHTMGa3JDZwrnQq4sF86dIHNDz0W1" crossorigin="anonymous">
+    </script>
+    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/js/bootstrap.min.js"
+        integrity="sha384-JjSmVgyd0p3pXB1rRibZUAYoIIy6OrQ6VrjIEaFf/nJGzIxFDsf4x0xIM+B07jRM" crossorigin="anonymous">
+    </script>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        var socket = io();
+
+        socket.on('disconnect', () => {
+            $('#log').empty();
+            $('#question').text('You have disconnected.');
+            $('#answers').empty();
+            $('#secondsTimer').empty();
+        });
+
+        socket.on('user list', (userList) => {
+            $('#userList').empty();
+            userList.forEach((u) => $('#userList').append($('<li>').text(u).attr('id', u)));
+            console.log(userList);
+        });
+
+        socket.on('user joined', (user) => {
+            $('#userList').append($('<li>').text(user).attr('id', user));
+            log(`${user} joined.`);
+            console.log(`${user} connected.`);
+        });
+
+        socket.on('user left', (user) => {
+            $(`#${user}`).remove();
+            log(`${user} left.`);
+            console.log(`${user} logged off.`);
+        });
+
+        socket.on('seconds left', (seconds) => {
+            $('#secondsTimer').text(`${seconds}s`);
+        });
+
+        socket.on('set question', (question) => {
+            console.log(question);
+            $('#question').html(question.question);
+
+            $('#answers').empty();
+
+            question.answers.forEach((answer, index) => {
+                let button = $('<button>').html(answer).addClass('btn').addClass('btn-primary')
+                    .addClass('mr-3');
+
+                button.click(() => {
+                    socket.emit('answer', index)
+                    console.log("Selected an answer");
+                    $('#answers button').prop('disabled', true);
+                });
+                $('#answers').append(button);
+            });
+        });
+
+        socket.on('answer result', (wasCorrect) => {
+            console.log('was correct: ' + wasCorrect);
+            if (wasCorrect) {
+                log('<b>You got the answer correct!</b>');
+            } else {
+                log('<b>You got the answer wrong. :(</b>');
+            }
+        });
+
+        socket.on('entered game room', (id) => {
+            log(`entered room ${id}`);
+            $('#roomList').empty();
+        });
+
+        socket.on('left game room', () => {
+            log('exited room');
+            $('#question').html('In the lobby');
+            $('#answers').empty();
+            $('#secondsTimer').empty();
+        });
+
+        socket.on('new room', (id) => {
+            addRoom(id);
+        });
+
+        socket.on('delete room', (id) => {
+            $(`#${id}`).remove();
+        });
+
+        socket.on('room list', (list) => {
+            $('#roomList').empty();
+
+            list.forEach((id) => addRoom(id));
+        });
+
+        $('#newRoomButton').click(() => {
+            socket.emit('create room');
+        });
+
+        $('#leaveRoomButton').click(() => {
+            socket.emit('leave room');
+        });
+
+        function log(text) {
+            $('#log').prepend($('<li>').html(text));
+        }
+
+        function addRoom(id) {
+            $('#roomList').prepend(
+                $('<li>').append(
+                    $('<a>').attr('href', '#').text(id)
+                    .click(() => socket.emit('join room', id))
+                )
+                .attr('id', id)
+            );
+        }
+    </script>
+</body>
+
+</html>
